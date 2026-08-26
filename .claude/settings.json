@@ -1,0 +1,52 @@
+{
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": ["ghidra-mcp"],
+  "permissions": {
+    "allow": [
+      "Bash(python3 tools/*)",
+      "Bash(./tools/*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(shasum*)",
+      "Bash(xxd*)",
+      "Bash(strings*)",
+      "Bash(curl -s -m 5 http://127.0.0.1:8089/*)",
+      "mcp__ghidra-mcp__check_connection",
+      "mcp__ghidra-mcp__list_open_programs",
+      "mcp__ghidra-mcp__list_tool_groups",
+      "mcp__ghidra-mcp__load_tool_group",
+      "mcp__ghidra-mcp__get_metadata",
+      "mcp__ghidra-mcp__list_functions_enhanced",
+      "mcp__ghidra-mcp__search_functions",
+      "mcp__ghidra-mcp__decompile_function",
+      "mcp__ghidra-mcp__batch_decompile",
+      "mcp__ghidra-mcp__disassemble_function",
+      "mcp__ghidra-mcp__get_plate_comment",
+      "mcp__ghidra-mcp__get_xrefs_to",
+      "mcp__ghidra-mcp__get_bulk_xrefs",
+      "mcp__ghidra-mcp__get_function_callers",
+      "mcp__ghidra-mcp__get_function_callees",
+      "mcp__ghidra-mcp__get_full_call_graph",
+      "mcp__ghidra-mcp__list_strings",
+      "mcp__ghidra-mcp__search_strings",
+      "mcp__ghidra-mcp__list_globals",
+      "mcp__ghidra-mcp__list_segments",
+      "mcp__ghidra-mcp__list_data_items_by_xrefs",
+      "mcp__ghidra-mcp__set_plate_comment",
+      "mcp__ghidra-mcp__set_bookmark",
+      "mcp__ghidra-mcp__add_function_tag",
+      "mcp__ghidra-mcp__rename_function_by_address",
+      "mcp__ghidra-mcp__save_program"
+    ],
+    "ask": [
+      "Bash(tools/swd/dump.sh*)",
+      "Bash(openocd*)"
+    ],
+    "deny": [
+      "Bash(git push*)"
+    ]
+  }
+}

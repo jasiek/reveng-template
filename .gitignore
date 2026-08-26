@@ -1,0 +1,30 @@
+# Ghidra transient/lock files — not part of the analysis state
+*.lock
+*.lock~
+*.grf
+tmp*.ps
+.ghidra/
+
+# Ephemeral wave artefacts
+scratchpad/*
+!scratchpad/.gitkeep
+tool-results/
+
+# Firmware images: track deliberately with `git add -f` once you have decided
+# they are redistributable. Dumps and decrypted derivatives stay local.
+firmware/*
+!firmware/.gitkeep
+!firmware/README.md
+tools/swd/dumps/*
+!tools/swd/dumps/.gitkeep
+
+# Local machine wiring
+.claude/settings.local.json
+.mcp.local.json
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
