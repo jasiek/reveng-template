@@ -42,9 +42,11 @@ that were learned the hard way are called out as such.
 4. **Add the Ghidra scripts directory:** Script Manager → *Manage Script
    Directories* → add `<repo>/ghidra_scripts`.
 
-Nothing else is required. `tools/triage.py` is pure standard-library Python 3 and
-runs with no Ghidra at all — you can triage a firmware image before deciding
-whether the project is worth starting.
+**Python 3.7+**, standard library only — nothing to `pip install`. Verified on
+3.9, 3.11 and 3.14. `tools/triage.py` needs no Ghidra at all, so you can triage a
+firmware image before deciding whether the project is worth starting. (The
+`ghidra_scripts/` are Jython 2.7, which is what Ghidra embeds — that is why they
+avoid f-strings.)
 
 ## Using it
 

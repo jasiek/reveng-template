@@ -38,6 +38,13 @@ One agent per batch file, in a **single message** so they run concurrently.
 `subagent_type: general-purpose`. Default to the mid model tier; use the frontier
 tier for the residue pass (`docs/NAMING_PLAYBOOK.md` §8).
 
+**Before reaching for a cheaper tier, know what it costs you.** Cheap models post a
+*higher* hit rate than expensive ones because they name functions that should have
+been skipped — coverage is not correctness, and the two look identical in a report.
+A wrong name then propagates: the next wave reads it as context. If you use one,
+audit it — sample ~10 of its names, decompile them yourself, check each is accurate
+rather than merely present. Do that before committing the wave, not after.
+
 The prompt is the template in playbook §6 — filled in from `TARGET.md` — plus
 `docs/SUBAGENT_CONTRACT.md` pasted verbatim, plus the current prefix list from
 `docs/NAMING_CONVENTIONS.md`.

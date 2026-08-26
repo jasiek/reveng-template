@@ -9,6 +9,9 @@ Paste this verbatim into every subagent prompt, under the task-specific instruct
 - **Plate comment immediately after each rename** — `[confidence: HIGH|MEDIUM] <one-line role>` —
   and write your result file **last**. Never run git. This is what makes an interruption cost
   nothing: if you are killed mid-batch, everything already applied is recoverable from Ghidra.
+- **You are not scored on how many functions you name.** The driver measures accuracy, by
+  decompiling a sample of your names. A batch of 8 correct names beats 30 plausible ones, and
+  there is no penalty for returning mostly skips.
 - **Skipping is a first-class result and costs you nothing.** A wrong name is worse than no name.
   Confirm a skip by disassembly before declaring something an empty stub.
 - **Cite evidence in the justification** — address, string, caller/xref site, constant.

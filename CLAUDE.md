@@ -81,6 +81,33 @@ GUI/plugin is not running — **tell the user; you cannot start it.**
   later — this is why `FINDINGS.md` and the TODO files exist. When you produce something worth
   keeping, save it to a file without being asked twice.
 
+### Model choice for subagents — the failure mode that hides
+
+**Apparent productivity is inversely correlated with skip discipline.** In the
+reference campaign the cheap tier posted a *higher* hit rate (~96%) than the
+frontier tier (~90% on the hardest residue) — because it named things that should
+have been skipped. Coverage is not correctness, and the two are indistinguishable
+in a report: a wrong name and a right name look identical until you decompile the
+function yourself.
+
+Why this one is worse than it looks: a wrong name **propagates**. The next wave's
+agents read neighbouring names as context and build inferences on top of them, and
+the name then flows into `FINDINGS.md` as prose. A skipped function costs one
+re-run of a slice; a wrong name costs a corruption that survives to the docs and
+is only caught by `/re-factcheck`, phases later.
+
+- **Default to the mid tier** for the tail; frontier tier for the residue and for
+  anything whose answer changes the plan.
+- **Audit a cheap tier before trusting a wave of it**: sample ~10 of its names,
+  decompile them yourself, and check that each name is *accurate* — not merely
+  that a name exists. This is the whole audit; it takes minutes.
+- **Distrust cheap-tier self-reports specifically.** "22 renames in 7 tool calls"
+  is arithmetically impossible and was really produced. The live-Ghidra diff exists
+  because of this, and it is not optional.
+- The niche for a cheap model is **narrow by construction**: rules should be
+  scripted (§2 of `docs/ORCHESTRATION.md`), and judgment needs a capable model.
+  What is left is bulk work on easy, already-anchored clusters.
+
 ## Repository layout
 
 - `TARGET.md` — **the only target-specific file.** Firmware path, CPU, memory map, phase.

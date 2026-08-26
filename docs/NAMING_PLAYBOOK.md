@@ -157,9 +157,16 @@ Then `save_program` and `git add -A && git commit` for the binary DB + `FINDINGS
 | Mid | ~94% | ~65% | good | good | DEFAULT for the tail |
 | Frontier | ~90%+ on hardest | high | strict | good | final cleanup; hardest residue |
 
+- **Read the hit-rate column as a warning, not a recommendation.** The cheap tier scores
+  *highest* precisely because its skip discipline is weakest: it names the un-nameable. In the
+  reference project it named a function the frontier tier had explicitly skipped, and reported
+  "22 renames in 7 tool calls" — arithmetically impossible. Coverage ≠ correctness.
 - **Audit before trusting a cheaper model**: sample ~10 of its names, decompile them yourself,
-  check accuracy (not just that a name exists). In the reference project the cheap tier named a
-  function the frontier tier had explicitly skipped as un-nameable — coverage ≠ correctness.
+  check each is *accurate* — not merely that a name exists. Minutes of work, and the only thing
+  separating a good wave from a plausible-looking bad one.
+- **Cost the error asymmetrically.** A skipped function costs one re-run of a slice. A wrong
+  name propagates into the next wave's context and into `FINDINGS.md`, and surfaces phases
+  later in a fact-check sweep. Cheap tokens, expensive corrections.
 - Recommended sequence for a big remainder: **mid tier over everything**, then **one frontier
   pass** over what it skipped/left.
 
