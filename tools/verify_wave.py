@@ -254,13 +254,14 @@ def report_glossary(fns: dict) -> None:
         if not is_named(name):
             continue
         m = re.match(r"([A-Za-z][A-Za-z0-9]*)_", name)
-        prefixes[m.group(1) if m else "(no prefix)"] += 1
+        prefixes[m.group(1) if m else "(none)"] += 1
     print("| Prefix | Functions |")
     print("|---|---|")
     for pfx, count in prefixes.most_common():
-        print(f"| `{pfx}_` | {count} |")
+        label = "(no prefix)" if pfx == "(none)" else f"`{pfx}_`"
+        print(f"| {label} | {count} |")
     lower = defaultdict(list)
-    for pfx in prefixes:
+    for pfx in (p for p in prefixes if p != "(none)"):
         lower[pfx.lower()].append(pfx)
     drift = {k: v for k, v in lower.items() if len(v) > 1}
     if drift:

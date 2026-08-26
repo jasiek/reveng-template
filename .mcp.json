@@ -1,12 +1,8 @@
 {
   "mcpServers": {
     "ghidra-mcp": {
-      "command": "python3",
-      "args": [
-        "${GHIDRA_MCP_BRIDGE:-${HOME}/github/ghidra-mcp/bridge_mcp_ghidra.py}",
-        "--transport",
-        "stdio"
-      ],
+      "command": "./tools/ghidra_mcp_launch.sh",
+      "args": [],
       "env": {
         "GHIDRA_MCP_URL": "${GHIDRA_MCP_URL:-http://127.0.0.1:8089}",
         "GHIDRA_DEBUGGER_URL": "${GHIDRA_DEBUGGER_URL:-http://127.0.0.1:8099}",

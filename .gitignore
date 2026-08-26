@@ -8,6 +8,7 @@ tmp*.ps
 # Ephemeral wave artefacts
 scratchpad/*
 !scratchpad/.gitkeep
+!scratchpad/README.md
 tool-results/
 
 # Firmware images: track deliberately with `git add -f` once you have decided
