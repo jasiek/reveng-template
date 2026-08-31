@@ -54,8 +54,82 @@ differently*.
 
 9. **Commits: driver only.** One per named unit + ledger row; the binary `.rep` DB batched.
 
+    **Never hand-copy the PREFIXES line from the previous wave's prompt.** Regenerate it from
+    `docs/NAMING_CONVENTIONS.md` — which is itself regenerated from the live program — every
+    single wave. In wave 8 the driver normalised `RF_`→`Rf_` in the program and *then* pasted
+    wave 7's prompt verbatim, which still said `RF_`; three agents dutifully reintroduced the
+    drift the driver had just spent five commits removing. The prompt is an input to the
+    artifact, so a stale prompt silently rewrites the artifact back. Same rule as rule 8: the
+    live program is the source, and anything copied forward is a stale claim until re-derived.
+
 10. **In the reimplementation phase the same discipline applies:** every transcribed-magic block
     cites the stock function + address it came from, so it stays auditable and re-derivable.
+
+11. **The driver must not retype anything the tools can emit — addresses least of all.**
+    In wave 9 the driver hand-typed six 30-address target lists into subagent prompts instead of
+    reading `scratchpad/9_batch_*.txt`. All 180 were fabricated. The failure did not stop at wrong
+    addresses: the invented lists had regular strides, so the driver "noticed" a family of
+    near-identical handlers differing by one constant, made that the centrepiece of three briefs,
+    and sent agents hunting for a discriminator that did not exist. When the first agent reported
+    the addresses were wrong, the driver "verified" it was mistaken — by checking the real batch
+    file against Ghidra rather than the list it had actually sent, thereby validating the wrong
+    thing and contradicting a correct agent. Six agents each rediscovered the problem alone.
+
+    Three properties made this expensive, and all three are worth generalising:
+    - **Fabrication is invisible to its author.** Every address was well-formed, in-range and
+      plausibly spaced. Nothing about it looked wrong from the inside.
+    - **It manufactured a false signal.** The strides were an artifact of invention, but they read
+      as a discovery about the firmware, and the driver reasoned onward from them.
+    - **The obvious check can be aimed at the wrong object.** Verifying "the batch file is
+      correct" says nothing about what was transmitted. Verify the thing you actually sent.
+
+    The fix is structural, not vigilance. `tools/emit_batch_prompts.py` writes a prompt that tells
+    the agent to `cat` its own batch file, and refuses to emit if any target is not a live function
+    entry — so a stale or malformed list fails loudly at the driver instead of quietly across six
+    agents. The prefix line is generated from `docs/NAMING_CONVENTIONS.md` (rule 9). Generalise it:
+    if a value can be derived, deriving it is not an optimisation, it is the correctness argument.
+
+12. **`CAMPAIGN_STATE.json` is the resume contract.** `tools/campaign_state.py snapshot` derives
+    it from live Ghidra plus the ledger; `status` prints it. It exists because these campaigns
+    outlive their sessions, and prose handoff notes rot while derived state cannot. It surfaces
+    the one thing a resuming agent most needs and would otherwise have to notice: **renames that
+    are in the program but not in the ledger** (live named minus ledger rows). Snapshot at every
+    wave boundary, commit it, and put non-derivable open items in `notes`.
+
+13. **Audit the substrate before scaling work on top of it.** The disassembler, the processor
+    module, the analyser and the bridge are artifacts written by someone else, and a campaign
+    multiplies whatever they get wrong by 3000 functions. The specific case that cost this
+    project a re-run: a third-party sleigh module that stopped at two unimplemented opcodes
+    (16 functions truncated, one to a third of its real length) and produced **0** for every
+    high-immediate load, so every peripheral address in the image resolved to a tiny number —
+    with a listing that looked perfectly healthy throughout. `/re-isa-audit`, before wave 1.
+
+    Generalised: **before a fan-out, ask what would have to be true of the tools for the output
+    to mean what you think it means, and test that one thing.** It is one script and an
+    afternoon; redoing a phase is a week.
+
+14. **When a question can be executed, do not infer it.** The judgement-call budget is finite and
+    should be spent on things that cannot be run. Three sessions of this project were spent
+    reconstructing a per-frame calling convention from decompilation — argument order, buffer
+    slots, a flag word — and all three reconstructions were wrong in different ways, each
+    producing believable output that was then explained with algorithmic theories. Running the
+    *real* caller in the emulator, with the calls that leave the subsystem stubbed, settled it in
+    one pass (`docs/ORACLE_PLAYBOOK.md` §4). The same move applies far outside emulation:
+
+    - an omission you think is harmless → **poison the memory and re-run**; identical output is a
+      result, an argument is not;
+    - a probe or fixture you built → **validate the instrument first** (a clipping synthetic
+      input once invalidated a day of amplitude conclusions);
+    - a claim about an aggregate → **report per item**; a mean hid a working path and a broken
+      one in the same run.
+
+15. **Settle orchestration questions with a pre-registered A/B, not with intuition.** Write the
+    design, the measurements and the *prediction* down and commit them **while the agents are
+    still running**, so the conclusion cannot be a post-hoc rationalisation. `docs/BATCH_SIZE_EXPERIMENT.md`
+    is the worked example, and its prediction was wrong in both directions — which is the point:
+    12x15 tied 6x30 on yield with zero extra collisions, so **contiguity is the lever, not batch
+    size**, and the real gain was somewhere else entirely (the hub/sink pre-pass, rule 1b of the
+    playbook). Two intuitions that felt obvious were simply false, and only the measurement said so.
 
 ## Do agents need a messageboard?
 

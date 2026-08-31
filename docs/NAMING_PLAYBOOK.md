@@ -38,20 +38,73 @@ Repeat until coverage plateaus:
 1. **Pick ~180 targets** (see §3), split into 6 batch files of ~30:
    `scratchpad/<wave>_batch_{0..5}.txt` (comma-separated addresses).
    `python3 tools/make_batches.py --wave <wave> --strategy contiguous --count 180 --batches 6`
-2. **Launch 6 subagents in parallel**, one per batch, with the prompt template in §6 plus
-   `docs/SUBAGENT_CONTRACT.md`. Each writes its results to `scratchpad/result_<wave>_{i}.json`
-   as the LAST step and sets each plate comment IMMEDIATELY after each rename (so an
-   interruption is recoverable).
+1b. **Run the hub/sink pre-pass BEFORE emitting prompts** (added after wave run14's A/B):
+   `python3 tools/find_hubs.py --wave <wave>`
+   It ranks unnamed functions that many of this wave's targets call (SINKS) and unnamed functions
+   with high program-wide in-degree (HUBS). **Name the top few YOURSELF, then write the brief so
+   agents start with the answer.** A sink is invisible to any single agent - it sees only its own
+   two or three calls - so only the whole-band view finds it.
+   Wave run15 is the worked example: 15 driver tool calls identified the band as GCC soft-float
+   plus libc and named 10 functions, after which six agents landed 128/143 = 89.5%, against
+   74/68/54/62% for the four preceding waves. Caveat: that band was library code, which is
+   inherently easier than radio logic, so the pre-pass does not own the whole gap.
+   Two practical notes: driver pre-pass renames appear as UNKNOWN confidence in the consolidated
+   TSV because `verify_wave` reads metadata from the agents' result JSONs - fill those rows from
+   the plate comments before committing. And do not over-generalise from the sinks to the whole
+   band: run15's brief claimed the band was all C runtime, and two agents correctly pushed back.
+
+2. **Emit the prompts programmatically — never retype a target list:**
+   `python3 tools/emit_batch_prompts.py --wave <wave> --brief scratchpad/run<NN>_prompt_common.txt`
+   It writes `scratchpad/<wave>_prompt_{0..5}.txt`, each telling its agent to `cat` its own batch
+   file, and it **refuses to emit if any target is not a live function entry**. Then launch 6
+   subagents in parallel whose entire prompt is one line:
+   `Read scratchpad/<wave>_prompt_<i>.txt and follow it exactly.`
+   Each writes its results to `scratchpad/result_<wave>_{i}.json` as the LAST step and sets each
+   plate comment IMMEDIATELY after each rename (so an interruption is recoverable).
+   *Wave 9 is why this is mechanical: the driver hand-typed all six lists and fabricated 180
+   addresses, then read a phantom "handler family" out of the fake strides — see
+   `docs/ORCHESTRATION.md` rule 11.*
 3. **Wait for all 6.** Ignore the prose summaries.
 4. **Verify via live-Ghidra diff** (§4) → the authoritative set of what landed.
 5. **Consolidate + reconcile collisions** (§5).
 6. **Commit one-per-function** (§7), then `save_program`, then commit the DB + docs.
 7. Update `FINDINGS.md` (new discoveries) and the coverage line.
+8. **Snapshot the resume point:** `python3 tools/campaign_state.py snapshot`, and commit
+   `CAMPAIGN_STATE.json`. It is derived from live Ghidra + the ledger, so it cannot drift.
 
 ## 3. Target selection (this determines yield)
 
 Priority order — **use it in this order from wave 1**; it is the single biggest lever on
 hit-rate (see `docs/ORCHESTRATION.md` §1).
+
+0. **Known code first — anything with a public source of truth.** Before any judgement-call
+   naming, sweep the parts of the image that are *not* this vendor's invention: the RTOS, the C
+   runtime, the compiler's soft-float and integer helpers, and any third-party library whose
+   banner string is in the image. Identify them at bootstrap from strings (`uC/OS-III Idle Task`,
+   `FreeRTOS`, `Nucleus`, a GCC version banner, zlib/mbedTLS/lwIP banners) and record it in
+   `TARGET.md`.
+
+   Why it is first, and it is not just tidiness:
+   - **They can be checked against ground truth.** A public header or source tree gives the real
+     name, the real signature and the real semantics. These are the only names in the campaign
+     that are *verifiable* rather than inferred — in the reference project 118 of 148 RTOS names
+     landed HIGH confidence.
+   - **They are the highest-value anchors.** Kernel and libc functions are called from everywhere,
+     so naming `OSSemPend`, `memcpy` or `__aeabi_fdiv` gives every later agent context for
+     hundreds of callers it has not seen. Naming vendor logic first buys nothing in the other
+     direction.
+   - **They are the cheapest yield in the campaign.** The reference project's one wave that
+     happened to land on the GCC soft-float + libc band scored **89.5%** against 54-74% for the
+     four waves around it. (Caveat, recorded honestly: library code is inherently easier, so the
+     hub pre-pass in §2 step 1b does not own that whole gap.)
+   - **They shrink the real problem.** Every function positively identified as library code is
+     one that never needs a judgement call, and it stops later waves from re-deriving it. It also
+     stops an agent inventing a radio-sounding name for `strtod`.
+
+   Two cautions. Identify the *version* where you can — an RTOS API drifts between majors, and a
+   name copied from the wrong major is a wrong name that looks authoritative. And do not
+   over-generalise a band to "all C runtime": in the reference campaign a brief that claimed this
+   was corrected by two agents who found real application code in the same band.
 
 1. **String-anchored functions** (early game): map defined strings → referencing functions via
    `get_bulk_xrefs` in chunks. This builds the spine that everything else hangs off.
@@ -61,6 +114,13 @@ hit-rate (see `docs/ORCHESTRATION.md` §1).
    contiguously. Adjacent functions are almost always the same subsystem, so each batch is a
    coherent cluster → hit-rate jumps (~50% scattered → ~90%+ contiguous).
    `--strategy contiguous`
+
+   **Contiguity is the lever, NOT batch size.** Measured in wave run14 (`docs/BATCH_SIZE_EXPERIMENT.md`):
+   6 agents x 30 and 12 agents x 15 over the same interleaved territory landed 112 and 109 of 180
+   respectively — a tie — with zero collisions in either arm and no accuracy difference. Halving the
+   batch cost nothing because each half was *still a contiguous run*. Keep 6x30 anyway: equal yield
+   from half the agents means half the per-agent fixed overhead. Prefer 12x15 only when wall-clock,
+   not token cost, is the binding constraint.
 4. **Fresh-band tactic**: never re-process a picked-over band. Low-address regions accumulate
    hard stubs that get re-skipped every wave. Always take the **lowest un-swept** band, and
    record swept bands so they are not revisited. `--strategy fresh --min-addr 0x08040000`
@@ -176,6 +236,9 @@ If the driver process dies or a wave is interrupted mid-flight: **the Ghidra pro
 whatever renames already landed.** Recover with the SAME live-Ghidra diff (§4), i.e.
 `/re-verify`:
 
+0. `python3 tools/campaign_state.py snapshot` — one command answers "where were we": coverage,
+   per-batch landed counts, which batches never wrote a result file, and **how many renames are
+   in the program but not in the ledger**. Start here; it turns recovery into a checklist.
 1. Reconnect the MCP tools.
 2. Diff live function list vs `ledger/renames.csv` → orphan renames (applied, not yet in ledger).
 3. Recover their confidence/role from plate comments (`get_plate_comment`).

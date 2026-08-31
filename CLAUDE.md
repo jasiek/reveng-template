@@ -23,8 +23,11 @@ project has not been bootstrapped — run `/re-bootstrap <firmware-file>`.
 1. `git clone` (or fork) this repo, drop the firmware image in `firmware/`.
 2. Start Ghidra with the GhidraMCP plugin listening on `http://127.0.0.1:8089`.
 3. Run `/re-bootstrap firmware/<image>` — triage, import, base address, analysis, `TARGET.md`.
-4. Run `/re-name-wave` repeatedly until coverage plateaus (`docs/NAMING_PLAYBOOK.md`).
-5. Run `/re-verify` after every wave and after every crash; `/re-factcheck` at each phase end.
+4. Run `/re-isa-audit` — prove the processor module decodes this CPU **before** naming anything
+   on top of it. One script if the arch is mainstream; the whole playbook if the module is a
+   third-party extension.
+5. Run `/re-name-wave` repeatedly until coverage plateaus (`docs/NAMING_PLAYBOOK.md`).
+6. Run `/re-verify` after every wave and after every crash; `/re-factcheck` at each phase end.
 
 ## Working with the Ghidra program (the "commands")
 
@@ -61,7 +64,29 @@ GUI/plugin is not running — **tell the user; you cannot start it.**
 4. Names: valid C identifiers, PascalCase, `Category_Action`, <40 chars. The prefix vocabulary
    lives in `docs/NAMING_CONVENTIONS.md` — it is driver-owned; regenerate it each wave from the
    names actually in the program rather than letting it drift.
-5. Every prose claim in a `.md` file carries an **address**. A claim with no address is a guess.
+5. **Never hand-type an address, a target list, or the prefix line. Generate them.** Addresses
+   come from `tools/make_batches.py` and reach agents only via
+   `tools/emit_batch_prompts.py`, which writes a prompt telling the agent to `cat` its own batch
+   file and refuses to emit if any target is not a live function entry. The prefix line is
+   generated from `docs/NAMING_CONVENTIONS.md`. **Anything the driver retypes is a claim it is
+   silently making about the artifact** — in wave 9 the driver typed 180 fabricated addresses and
+   then invented a "family of near-identical handlers" out of the fake strides. Six agents each
+   had to discover it independently. See `docs/ORCHESTRATION.md` rule 11.
+6. **`CAMPAIGN_STATE.json` is the resume point.** Regenerate with
+   `python3 tools/campaign_state.py snapshot`; read it with `status`. It is derived from live
+   Ghidra plus the ledger — never hand-edited — and it answers "where were we" for a fresh
+   session: coverage, per-wave/per-batch landed counts, which batches have no result file, and
+   how many renames are in the program but not yet in the ledger. Snapshot it at every wave
+   boundary and commit it. Non-derivable open items go in its `notes` via
+   `campaign_state.py note --add`.
+7. Every prose claim in a `.md` file carries an **address**. A claim with no address is a guess.
+8. **The disassembly is a claim too.** A processor module — especially a third-party sleigh
+   module — can be incomplete (it stops, and functions come out short), wrong (a length error
+   desyncs the stream and everything after it in that function is fiction), or semantically wrong
+   while decoding perfectly (the listing is right, the p-code and therefore the decompiler are
+   not). Each needs a different test, and none of them can be run from inside Ghidra alone:
+   `/re-isa-audit` for the first two, `/re-oracle` for the third. Run the audit **before** the
+   naming campaign, not after — names derived from truncated bodies have to be redone.
 
 ## Operating rhythm (how work actually runs here)
 
@@ -125,14 +150,35 @@ is only caught by `/re-factcheck`, phases later.
   campaign. **Read before launching any fan-out.**
 - `docs/SUBAGENT_CONTRACT.md` — the contract to paste into every subagent prompt.
 - `docs/NAMING_CONVENTIONS.md` — the prefix vocabulary (living glossary).
+- `docs/ISA_AUDIT_PLAYBOOK.md` — how to prove the processor module decodes this ISA, and what to
+  do when it does not. Findings go in `docs/ISA_AUDIT.md`; sleigh fixes in `docs/patches/`.
+- `docs/ORACLE_PLAYBOOK.md` — running the firmware's own code as ground truth (closure audit →
+  p-code emulation → differential test). Findings go in `docs/EMULATION.md`.
+- `docs/BRIDGE_NOTES.md` — quirks of the ghidra-mcp bridge and the Ghidra GUI that cost a session
+  each the first time. Read it the first time something "hangs".
 - `tools/triage.py` — offline firmware triage: entropy, vector tables, load base, container
   header, strings, crypto constants, repeating-XOR obfuscation. Runs before Ghidra.
 - `tools/verify_wave.py` — the live-Ghidra diff. The one verification you must never skip.
 - `tools/make_batches.py` — target selection → batch files for the wave loop.
+- `tools/emit_batch_prompts.py` — turns batch files into agent prompts, and **refuses to emit if
+  a target is not a live function entry**. The driver never retypes an address.
+- `tools/find_hubs.py` — the pre-pass: unnamed sinks the wave's own targets call, and unnamed
+  program-wide hubs. Name those yourself before fanning out.
+- `tools/campaign_state.py` — snapshot/status of `CAMPAIGN_STATE.json`, derived from live Ghidra
+  plus the ledger. The resume point.
+- `tools/isa_audit/` — differential disassembly against an independent decoder, with a worked
+  binutils example under `examples/csky/`.
 - `tools/commit_renames.sh` — driver-side one-commit-per-function ledger append.
 - `tools/swd/` — hardware dump path (probe → dump → carve). **`probe.sh` is read-only; check
   the readout-protection level before any dump.**
-- `scratchpad/` — **ephemeral** per-wave agent batch/result files. Safe to treat as scratch.
+- `scratchpad/` — **ephemeral and gitignored** per-wave agent batch/result files. Safe to delete.
+  Because it is gitignored, `git add scratchpad/<file>` is a **silent no-op** — wave 9 "committed"
+  three artifacts this way and none of them entered git. Anything worth keeping must be promoted
+  to a tracked path in the same commit that cites it: prose to `FINDINGS.md` or `docs/`, recovered
+  tables to `docs/DISPATCH_TABLES.md`, campaign state to `ledger/`.
+- `ledger/swept.json` — the swept-band record `tools/make_batches.py` reads to avoid re-issuing
+  bands. **Tracked**, and moved here from `scratchpad/` for exactly that reason: losing it would
+  silently re-hand-out every band the campaign has already covered.
 
 ## Phase map (typical HT firmware project)
 
@@ -140,7 +186,16 @@ Each phase ends with a `/re-factcheck` sweep. Record the current phase in `TARGE
 
 0. **Triage** — `/re-bootstrap`. What is this file? Container header, load base, arch, RTOS,
    crypto, obfuscation. Kill the load-bearing assumption before building on it.
+0.5. **ISA audit** — `/re-isa-audit`. **Does the processor module actually decode this CPU?**
+   Everything downstream is built on the disassembler, and a third-party sleigh module is a
+   hand-written spec of somebody else's ISA. Differential-disassemble against binutils/LLVM,
+   scan for the places the disassembler *stopped*, patch, then **re-disassemble** — Ghidra never
+   retries a failed decode. Skippable only for a Ghidra-shipped mainstream arch, and even then
+   run the stop scan: it is one script. `docs/ISA_AUDIT_PLAYBOOK.md`.
 1. **Naming** — the wave loop until coverage plateaus (~95–97% is the realistic ceiling).
+   Start with **known code**: the RTOS, the C runtime and the compiler helpers are the only
+   functions in the image with a public source of truth, and they anchor everything else
+   (`docs/NAMING_PLAYBOOK.md` §3.0).
 2. **Globals/SRAM** — name and type every code-referenced RAM address. Mostly *scripted*, not
    agent work (`/re-type-globals`).
 3. **Bootloader / secure boot** — the bootloader is usually **not** in the vendor update file.
@@ -150,3 +205,7 @@ Each phase ends with a `/re-factcheck` sweep. Record the current phase in `TARGE
    Cross-check against external ground truth (e.g. an open-source CPS) wherever one exists.
 5. **Reimplementation** (optional) — clean-room source with the reversed firmware as a
    behavioral oracle. Every transcribed magic block cites the stock function + address.
+   Make the oracle literal: `/re-oracle` executes the stock code in Ghidra's p-code emulator on
+   real input, so a transcription is checked *per function* against the firmware rather than
+   argued about (`docs/ORACLE_PLAYBOOK.md`). It is also the only test of the processor module's
+   **semantics** — the ISA audit proves the decode, not the p-code.

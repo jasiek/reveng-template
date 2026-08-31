@@ -38,6 +38,39 @@
 - **Container header stripped:** `<N bytes / none>` — the raw file offset of the vector table.
 - **File-offset → VA:** `VA = file_offset - <header> + <image base>`
 
+### How the ISA was established (independent of the part number)
+
+A part number is a claim; the bytes are the evidence. Record the argument, so that if the two
+ever disagree you know which one was measured.
+
+- Vector table / prologue / call-encoding fingerprints found: `<what, and where>`
+- Call targets resolve aligned and in-range under this ISA's length rule: `<N targets / n.a.>`
+- Ruled out: `<the ISA you first assumed, and the measurement that killed it>`
+
+### Processor module audit (phase 0.5 — `/re-isa-audit`)
+
+| Field | Value |
+|---|---|
+| Module | `<Ghidra-shipped / third-party: repo + version>` |
+| Reference decoder used | `<binutils <ver> --target=<arch>-elf / llvm-objdump / none yet>` |
+| Instructions compared | `<N>` |
+| Length mismatches | `<N — anything but 0 is fatal, see docs/ISA_AUDIT_PLAYBOOK.md>` |
+| Decode stop points | `<N before -> N after repair>` |
+| Sleigh patches applied | `<docs/patches/*.patch, or none needed>` |
+| P-code verified by execution | `<no / which subgraph, docs/EMULATION.md>` |
+
+## Known code (the parts with a public source of truth)
+
+Name these first — they are the only functions in the image that can be checked rather than
+inferred, and they anchor everything that calls them (`docs/NAMING_PLAYBOOK.md` §3.0).
+
+| What | Evidence | Named? |
+|---|---|---|
+| RTOS + version | `<banner string + address>` | `<n/N>` |
+| C runtime / libc | `<banner or recognisable strings>` | `<n/N>` |
+| Compiler helpers (soft-float, integer div) | `<toolchain banner + address>` | `<n/N>` |
+| Third-party libraries | `<zlib/mbedTLS/lwIP/… banner + address>` | `<n/N>` |
+
 ## Ghidra
 
 | Field | Value |
@@ -68,5 +101,5 @@ agent trying to refute it before building phases on top of it.
 
 ## Current phase
 
-`<0 triage | 1 naming | 2 globals | 3 bootloader | 4 subsystems | 5 reimpl>` —
+`<0 triage | 0.5 ISA audit | 1 naming | 2 globals | 3 bootloader | 4 subsystems | 5 reimpl>` —
 `<one line on what is in flight and what the next move is>`

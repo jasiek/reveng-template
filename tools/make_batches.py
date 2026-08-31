@@ -23,7 +23,8 @@ docs/NAMING_PLAYBOOK.md §3 — this ordering is worth ~15 waves):
   hubs         highest caller in-degree first. Good for picking early ANCHORS,
                poor as a bulk strategy — do not spend a campaign on it.
 
-Swept bands are recorded in scratchpad/swept.json so `contiguous` and `fresh`
+Swept bands are recorded in ledger/swept.json (tracked - scratchpad/ is disposable)
+so `contiguous` and `fresh`
 never hand the same addresses out twice.
 """
 from __future__ import annotations
@@ -40,7 +41,8 @@ from verify_wave import fetch_functions, is_named, norm, read_ledger  # noqa: E4
 
 REPO = Path(__file__).resolve().parent.parent
 SCRATCH = REPO / "scratchpad"
-SWEPT = SCRATCH / "swept.json"
+SWEPT = REPO / "ledger" / "swept.json"
+_LEGACY_SWEPT = SCRATCH / "swept.json"   # pre-wave-10 location; scratchpad/ is disposable
 DEFAULT_URL = os.environ.get("GHIDRA_MCP_URL", "http://127.0.0.1:8089")
 
 
@@ -58,35 +60,101 @@ def http_json(url: str, path: str, timeout: int = 120):
     return data
 
 
-def caller_counts(url: str) -> dict[str, int]:
-    """Caller in-degree per function address, from the full call graph."""
+def caller_counts(url: str, fns: dict) -> dict[str, int]:
+    """Caller in-degree per function ADDRESS, from the full call graph.
+
+    The bridge's /get_full_call_graph returns plain text, one edge per line, as
+    "caller_name -> callee_name" — NOT json, and keyed by NAME, not address. Both
+    facts have bitten this function:
+
+      * it used to json.loads() the response, so every zero-caller run died with
+        "could not fetch the call graph: Expecting value: line 1 column 1";
+      * worse, it counted into a dict keyed by norm(name) and the caller then looked
+        up counts.get(address), which never matched. Had the parse succeeded, EVERY
+        unnamed function would have shown an in-degree of 0 and the whole wave would
+        have been handed out as "zero-caller" targets. A silent-garbage failure is
+        worse than the crash that was hiding it.
+
+    So: parse text (still accepting json if the bridge ever changes), and resolve
+    callee names to addresses through the live function list before counting.
+    """
+    # The limit is NOT optional. Without it the bridge caps the response at ~560
+    # edges out of 7864, which silently turns most of the program into apparent
+    # zero-caller functions — the same class of failure as the name/address bug
+    # below, just quieter. The count is asserted after parsing.
     try:
-        graph = http_json(url, "get_full_call_graph?format=edges&limit=200000")
+        with urllib.request.urlopen(
+                f"{url.rstrip('/')}/get_full_call_graph?limit=200000", timeout=300) as resp:
+            raw = resp.read().decode("utf-8", "replace")
     except Exception as exc:                                    # noqa: BLE001
         sys.exit(f"could not fetch the call graph: {exc}\n"
                  "Use --strategy contiguous, which needs only the function list.")
-    edges = graph.get("edges", graph) if isinstance(graph, dict) else graph
+
+    edges: list[tuple[str, str]] = []
+    stripped = raw.lstrip()
+    if stripped[:1] in "[{":                       # a future json-shaped bridge
+        data = json.loads(raw)
+        for _ in range(3):
+            if isinstance(data, str):
+                data = json.loads(data)
+            elif isinstance(data, dict) and "result" in data:
+                data = data["result"]
+            else:
+                break
+        seq = data.get("edges", data) if isinstance(data, dict) else data
+        for e in seq:
+            if isinstance(e, dict):
+                callee = e.get("to") or e.get("callee") or e.get("target")
+                caller = e.get("from") or e.get("caller") or e.get("source")
+            elif isinstance(e, (list, tuple)) and len(e) >= 2:
+                caller, callee = e[0], e[1]
+            else:
+                continue
+            if callee:
+                edges.append((str(caller), str(callee)))
+    else:                                          # the actual format: "A -> B"
+        for line in raw.splitlines():
+            if "->" not in line:
+                continue
+            caller, _, callee = line.partition("->")
+            caller, callee = caller.strip(), callee.strip()
+            if callee:
+                edges.append((caller, callee))
+
+    if not edges:
+        sys.exit("the call graph came back empty — refusing to call every function "
+                 "zero-caller. Check the bridge, or use --strategy contiguous.")
+    if len(edges) <= 600:
+        sys.exit(f"the call graph returned only {len(edges)} edges, which is the "
+                 "bridge's un-limited default cap, not the whole program. Every "
+                 "function would look zero-caller. Refusing to select targets.")
+
+    # name -> address, so callee names resolve to the addresses `unnamed` is keyed by
+    by_name = {v["name"]: a for a, v in fns.items()}
     counts: dict[str, int] = {}
-    for e in edges:
-        if isinstance(e, dict):
-            callee = e.get("to") or e.get("callee") or e.get("target")
-        elif isinstance(e, (list, tuple)) and len(e) >= 2:
-            callee = e[1]
-        else:
+    unresolved = 0
+    for _caller, callee in edges:
+        addr = by_name.get(callee)
+        if addr is None:
+            unresolved += 1
             continue
-        if callee:
-            counts[norm(str(callee))] = counts.get(norm(str(callee)), 0) + 1
+        counts[addr] = counts.get(addr, 0) + 1
+    if unresolved:
+        print(f"  note: {unresolved} of {len(edges)} call-graph edges named a callee "
+              f"not in the function list (thunks/externals); ignored")
     return counts
 
 
 def load_swept() -> list[list[int]]:
     if SWEPT.exists():
         return json.loads(SWEPT.read_text())
+    if _LEGACY_SWEPT.exists():          # migrate from the old scratchpad location
+        return json.loads(_LEGACY_SWEPT.read_text())
     return []
 
 
 def save_swept(bands: list[list[int]]) -> None:
-    SCRATCH.mkdir(exist_ok=True)
+    SWEPT.parent.mkdir(exist_ok=True)
     SWEPT.write_text(json.dumps(sorted(bands), indent=2))
 
 
@@ -128,12 +196,12 @@ def main() -> int:
             return 1
         picked = pool[:args.count]
     elif args.strategy == "zero-caller":
-        counts = caller_counts(args.url)
+        counts = caller_counts(args.url, fns)
         picked = [(n, a) for n, a in unnamed if counts.get(a, 0) == 0][:args.count]
         print(f"{len(picked)} zero-caller targets — subagents must use get_xrefs_to on the "
               f"ADDRESS to find each dispatch table")
     else:  # hubs
-        counts = caller_counts(args.url)
+        counts = caller_counts(args.url, fns)
         picked = sorted(unnamed, key=lambda t: -counts.get(t[1], 0))[:args.count]
 
     if not picked:

@@ -87,6 +87,32 @@ Before any bulk naming, build the spine that everything hangs off:
 `get_bulk_xrefs` over the defined strings maps the obvious subsystems in one pass
 and produces the highest-confidence names in the whole campaign. That is wave 1.
 
+While you are in the strings, **inventory the code that is not this vendor's**:
+an RTOS banner (`uC/OS-III Idle Task`, `FreeRTOS`, `Nucleus`), a GCC/toolchain
+version string, libc format strings, a zlib/mbedTLS/lwIP banner. Record each with
+its address in `TARGET.md` under *Known code*, with the **version** where the
+string gives one. These are the only functions in the image whose names can be
+*checked* against a public source of truth rather than inferred, and they are
+called from everywhere, so they are the first naming targets
+(`docs/NAMING_PLAYBOOK.md` §3.0) — not a footnote.
+
+## 5b. Is the disassembly trustworthy? — the gate before naming
+
+Two cheap checks now, because everything after this is built on them:
+
+1. **Establish the ISA from the bytes**, not only from the part number — call
+   encodings, prologue patterns, and whether call targets resolve aligned and
+   in-range under the ISA's length rule. Write the argument into `TARGET.md`
+   under *How the ISA was established*. When the part number later agrees, you
+   have two independent lines of evidence instead of one assumption.
+2. **Run `ghidra_scripts/IsaGaps.java`** — every place the disassembler stopped.
+   Zero is a result worth recording; anything else means functions are truncated
+   and names derived from them will have to be redone.
+
+If the language module is a **third-party extension**, or the stop scan is
+non-zero, or peripheral addresses look absurd, stop and run `/re-isa-audit`
+before the first naming wave. `docs/ISA_AUDIT_PLAYBOOK.md`.
+
 ## 6. Commit and hand off
 
 ```bash
@@ -94,6 +120,7 @@ git add -A && git commit -m "Bootstrap: <device> <version> imported at <base>"
 ```
 
 Then tell the user, in a few lines: what the file is, where it loads, what the
-markers say is inside it, what the load-bearing assumption is, and that the next
-move is `/re-name-wave`. Point out anything triage found that changes the plan —
+markers say is inside it, what the load-bearing assumption is, whether the
+disassembler stopped anywhere, and that the next move is `/re-isa-audit` (or
+`/re-name-wave` if the module is mainstream and the stop scan came back clean). Point out anything triage found that changes the plan —
 a second image, an encryption layer, an unexpected RTOS.
